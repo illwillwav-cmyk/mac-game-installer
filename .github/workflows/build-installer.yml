@@ -43,7 +43,10 @@ jobs:
           submodules: recursive
 
       - name: Install build tools
-        run: brew install cmake ninja
+        run: |
+          brew install cmake ninja
+          # upstream commits its macOS build scripts without the executable bit; make calls them directly
+          chmod +x tools/*.sh
 
       - name: Cache bundled dependencies (SDL3, FFmpeg, keystone, Python)
         uses: actions/cache@v4
