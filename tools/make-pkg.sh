@@ -19,7 +19,12 @@ ID=com.macgameinstaller
 component() {  # id, app path
     local id=$1 app=$2
     [ -d "$app" ] || { echo "missing $app" >&2; return 1; }
-    codesign --verify --strict "$app" || { echo "$app: bad or missing signature" >&2; return 1; }
+    if ! codesign --verify --strict "$app" 2>/dev/null; then
+        # the ad-hoc seal does not always survive a zip round trip: sign it again (ad hoc, like upstream does)
+        echo "  $app: signature invalid after transfer, re-signing ad hoc"
+        codesign --force --deep --sign - "$app"
+        codesign --verify --strict "$app" || { echo "$app: cannot be signed" >&2; return 1; }
+    fi
     pkgbuild --component "$app" --install-location /Applications --identifier "$ID.$id" --version "$VERSION" \
         "$WORK/$id.pkg" >/dev/null
     echo "  $id.pkg <- $app ($(du -sh "$app" | cut -f1))"

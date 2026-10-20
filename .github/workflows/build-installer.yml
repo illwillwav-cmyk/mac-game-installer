@@ -76,7 +76,6 @@ jobs:
         run: |
           make -j"$(sysctl -n hw.ncpu)" app
           codesign --verify --strict "build/Sky Recomp.app"
-          echo "built $(git rev-parse --short HEAD)" > "build/Sky Recomp.app/Contents/Resources/BUILD_INFO.txt"
           ditto -c -k --keepParent --sequesterRsrc "build/Sky Recomp.app" SkyRecomp.app.zip
           ls -la SkyRecomp.app.zip
 
@@ -121,7 +120,6 @@ jobs:
         run: |
           ./make-app.sh
           codesign --verify --strict build/Mush8.app
-          echo "built $(git rev-parse --short HEAD)" > build/Mush8.app/Contents/Resources/BUILD_INFO.txt
           ditto -c -k --keepParent --sequesterRsrc build/Mush8.app Mush8.app.zip
           ls -la Mush8.app.zip
 
