@@ -47,6 +47,10 @@ jobs:
           brew install cmake ninja
           # upstream commits its macOS build scripts without the executable bit; make calls them directly
           chmod +x tools/*.sh
+          # the bundle script looks for the launcher font at LAS Recomp's path; Sky Recomp keeps it at the root
+          mkdir -p third_party/fonts/Baloo2
+          cp Baloo2-SemiBold.ttf third_party/fonts/Baloo2/Baloo2-SemiBold.ttf
+          cp Baloo2-OFL.txt third_party/fonts/Baloo2/OFL.txt
 
       - name: Cache bundled dependencies (SDL3, FFmpeg, keystone, Python)
         uses: actions/cache@v4
