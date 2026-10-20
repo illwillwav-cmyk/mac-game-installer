@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>Mac Game Installer</title>
+    <welcome file="welcome.html"/>
+    <readme file="readme.html"/>
+    <conclusion file="conclusion.html"/>
+    <options customize="allow" require-scripts="false" hostArchitectures="arm64" rootVolumeOnly="true"/>
+    <allowed-os-versions>
+        <os-version min="14.0"/>
+    </allowed-os-versions>
+    <domains enable_localSystem="true"/>
+    <choices-outline>
+        <line choice="skyrecomp"/>
+        <line choice="mush8"/>
+        <line choice="totk"/>
+    </choices-outline>
+    <choice id="skyrecomp" title="Sky Recomp (Skyward Sword HD)" description="Native port of The Legend of Zelda: Skyward Sword HD. Needs macOS 15 or later. On first launch, point it at your own uncompressed v1.0.0 game files (romfs and exefs).">
+        <pkg-ref id="com.macgameinstaller.skyrecomp"/>
+    </choice>
+    <choice id="mush8" title="Mush8 (Mario Kart 8 Deluxe)" description="Native port of Mario Kart 8 Deluxe with LAN, online and wireless multiplayer. Needs macOS 14 or later. On first launch, point it at a folder with your prod.keys, base game and update 4.0.1 .nsp files and a Firmware folder.">
+        <pkg-ref id="com.macgameinstaller.mush8"/>
+    </choice>
+    <choice id="totk" title="Build Tears of the Kingdom" description="A helper that builds The Legend of Zelda: Tears of the Kingdom into /Applications from your own .xci/.nsp and prod.keys using MacNativeGames. The game itself cannot be shipped. Needs macOS 26 or later, Homebrew and about 25 to 40 GB free.">
+        <pkg-ref id="com.macgameinstaller.totk"/>
+    </choice>
+    <pkg-ref id="com.macgameinstaller.skyrecomp" version="@VERSION@" onConclusion="none">skyrecomp.pkg</pkg-ref>
+    <pkg-ref id="com.macgameinstaller.mush8" version="@VERSION@" onConclusion="none">mush8.pkg</pkg-ref>
+    <pkg-ref id="com.macgameinstaller.totk" version="@VERSION@" onConclusion="none">totk.pkg</pkg-ref>
+</installer-gui-script>

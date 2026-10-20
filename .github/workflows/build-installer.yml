@@ -1,0 +1,183 @@
+# Builds "Mac Game Installer-<version>.pkg": one installer that puts Sky Recomp (Skyward Sword HD), Mush8
+# (Mario Kart 8 Deluxe) and the "Build Tears of the Kingdom" helper into /Applications.
+# The apps contain no game data; each asks for your own dump on first launch. See README.md.
+name: Build installer
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Installer version (default 0.1.<run number>)
+        type: string
+        default: ""
+      skyrecomp_ref:
+        description: Sky Recomp branch, tag or commit
+        type: string
+        default: main
+      mush8_ref:
+        description: Mush8 branch, tag or commit
+        type: string
+        default: main
+      publish_release:
+        description: Attach the .pkg to a GitHub release (artifacts alone expire after 90 days)
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+env:
+  VERSION: ${{ inputs.version != '' && inputs.version || format('0.1.{0}', github.run_number) }}
+
+jobs:
+  skyrecomp:
+    name: Sky Recomp (Skyward Sword HD)
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - name: Check out Sky Recomp
+        uses: actions/checkout@v4
+        with:
+          repository: Apolinario-coder/SkyRecomp
+          ref: ${{ inputs.skyrecomp_ref }}
+          submodules: recursive
+
+      - name: Install build tools
+        run: brew install cmake ninja
+
+      - name: Cache bundled dependencies (SDL3, FFmpeg, keystone, Python)
+        uses: actions/cache@v4
+        with:
+          path: build/deps
+          key: skyrecomp-deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/build_deps_macos.sh') }}
+
+      - name: Build bundled dependencies
+        run: make deps
+
+      - name: Build the game-code generator helper (lasgen)
+        # Same steps as the upstream release workflow, with the relocatable Python from `make deps` so the helper
+        # runs on the app's minimum macOS. The Makefile's gen-helper target needs a randomizer submodule this
+        # checkout does not carry.
+        run: |
+          build/deps/python/bin/python3.12 -m venv build/setup-venv
+          build/setup-venv/bin/pip install -q pyinstaller==6.22.3 capstone==5.0.9 unicorn==2.1.4 lz4==4.4.5
+          build/setup-venv/bin/python -m PyInstaller --noconfirm --clean --log-level WARN \
+            --distpath build/helper --workpath build/pyinstaller tools/lasgen.spec
+          bash tools/fetch_zig.sh
+
+      - name: Build the app
+        run: |
+          make -j"$(sysctl -n hw.ncpu)" app
+          codesign --verify --strict "build/Sky Recomp.app"
+          echo "built $(git rev-parse --short HEAD)" > "build/Sky Recomp.app/Contents/Resources/BUILD_INFO.txt"
+          ditto -c -k --keepParent --sequesterRsrc "build/Sky Recomp.app" SkyRecomp.app.zip
+          ls -la SkyRecomp.app.zip
+
+      - name: Upload app
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-skyrecomp
+          path: SkyRecomp.app.zip
+          if-no-files-found: error
+
+  mush8:
+    name: Mush8 (Mario Kart 8 Deluxe)
+    runs-on: macos-26
+    timeout-minutes: 120
+    steps:
+      - name: Check out Mush8
+        uses: actions/checkout@v4
+        with:
+          repository: c22dev/mush8
+          ref: ${{ inputs.mush8_ref }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: mush8-cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: mush8-cargo-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swiftc --version
+          cargo --version
+
+      - name: Build Mush8.app
+        run: |
+          ./make-app.sh
+          codesign --verify --strict build/Mush8.app
+          echo "built $(git rev-parse --short HEAD)" > build/Mush8.app/Contents/Resources/BUILD_INFO.txt
+          ditto -c -k --keepParent --sequesterRsrc build/Mush8.app Mush8.app.zip
+          ls -la Mush8.app.zip
+
+      - name: Upload app
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-mush8
+          path: Mush8.app.zip
+          if-no-files-found: error
+
+  package:
+    name: Package the installer
+    needs: [skyrecomp, mush8]
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Check out this repo
+        uses: actions/checkout@v4
+
+      - name: Download the apps
+        uses: actions/download-artifact@v4
+        with:
+          path: zips
+          merge-multiple: true
+
+      - name: Unpack the apps
+        run: |
+          mkdir -p apps
+          for z in zips/*.zip; do ditto -x -k "$z" apps; done
+          ls -la apps
+
+      - name: Build the .pkg
+        run: tools/make-pkg.sh apps "$VERSION" out
+
+      - name: Test-install the .pkg on this runner
+        run: |
+          sudo installer -pkg out/*.pkg -target / -verbose
+          ls -la /Applications | grep -E 'Sky Recomp|Mush8|Tears'
+          for a in "/Applications/Sky Recomp.app" /Applications/Mush8.app "/Applications/Build Tears of the Kingdom.app"; do
+            codesign --verify --strict "$a" && echo "ok: $a"
+          done
+          pkgutil --pkgs | grep com.macgameinstaller
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mac-Game-Installer-${{ env.VERSION }}
+          path: out/*.pkg
+          if-no-files-found: error
+
+      - name: Publish release
+        if: ${{ inputs.publish_release }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "One installer for three Switch-on-Mac projects. Built $(date -u +%Y-%m-%d) by run ${{ github.run_id }}."
+            echo
+            echo "- Sky Recomp (Skyward Sword HD): Apolinario-coder/SkyRecomp @ \`${{ inputs.skyrecomp_ref }}\`"
+            echo "- Mush8 (Mario Kart 8 Deluxe): c22dev/mush8 @ \`${{ inputs.mush8_ref }}\`"
+            echo "- Build Tears of the Kingdom: helper that runs ly05010419/MacNativeGames on your own game file"
+            echo
+            echo "The installer is not notarized: right-click it, choose Open, then Open again. You supply your own game dump."
+          } > notes.md
+          gh release create "v$VERSION" out/*.pkg --repo "${{ github.repository }}" \
+            --title "Mac Game Installer $VERSION" --notes-file notes.md
